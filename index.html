@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Penguin Jump - Now with Movement! 🐧</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: linear-gradient(to bottom, #87CEEB, #E0F6FF);
+            font-family: Arial, sans-serif;
+        }
+        
+        h1 {
+            color: #2C3E50;
+            margin-bottom: 10px;
+        }
+        
+        #gameCanvas {
+            border: 3px solid #2C3E50;
+            background: linear-gradient(to bottom, #87CEEB 0%, #FFFFFF 100%);
+            cursor: pointer;
+        }
+        
+        #score {
+            font-size: 24px;
+            color: #2C3E50;
+            margin: 10px;
+            font-weight: bold;
+        }
+        
+        #instructions {
+            color: #34495E;
+            margin: 10px;
+            text-align: center;
+            max-width: 800px;
+        }
+        
+        #gameOver {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 18px;
+            background: #3498DB;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            background: #2980B9;
+        }
+    </style>
+</head>
+<body>
+    <h1>🐧 Penguin Jump 🐧</h1>
+    <div id="score">Score: 0</div>
+    <div id="instructions">
+        <strong>Controls:</strong> Arrow Keys (← →) or A/D to move | SPACE or ↑ to jump | Click canvas to start
+    </div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    
+    <div id="gameOver">
+        <h2>Game Over!</h2>
+        <p id="finalScore"></p>
+        <button onclick="restartGame()">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const gameOverDiv = document.getElementById('gameOver');
+        const finalScoreElement = document.getElementById('finalScore');
+        
+        // Game variables
+        let score = 0;
+        let gameRunning = true;
+        let obstacles = [];
+        let frameCount = 0;
+        
+        // Penguin object
+        const penguin = {
+            x: 100,
+            y: 300,
+            width: 40,
+            height: 50,
+            velocityY: 0,
+            velocityX: 0,
+            gravity: 0.6,
+            jumpStrength: -12,
+            moveSpeed: 5,
+            baseMoveSpeed: 5,
+            maxMoveSpeed: 12,
+            isJumping: false
+        };
+        
+        // Ground level
+        const groundY = 350;
+        
+        // Keyboard controls
+        const keys = {
+            left: false,
+            right: false,
+            up: false
+        };
+        
+        // Draw penguin
+        function drawPenguin() {
+            ctx.save();
+            ctx.translate(penguin.x + 20, penguin.y + 25);
+            
+            // Flip penguin if moving left
+            if (penguin.velocityX < 0) {
+                ctx.scale(-1, 1);
+            }
+            
+            // Body
+            ctx.fillStyle = '#2C3E50';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 20, 25, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Belly
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.ellipse(0, 3, 12, 18, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Head
+            ctx.fillStyle = '#2C3E50';
+            ctx.beginPath();
+            ctx.arc(0, -15, 15, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Eyes
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(-5, -17, 4, 0, Math.PI * 2);
+            ctx.arc(5, -17, 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Pupils
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(-5, -17, 2, 0, Math.PI * 2);
+            ctx.arc(5, -17, 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Beak
+            ctx.fillStyle = '#FF9800';
+            ctx.beginPath();
+            ctx.moveTo(0, -13);
+            ctx.lineTo(5, -10);
+            ctx.lineTo(0, -9);
+            ctx.fill();
+            
+            // Feet
+            ctx.fillStyle = '#FF9800';
+            ctx.fillRect(-10, 23, 8, 4);
+            ctx.fillRect(2, 23, 8, 4);
+            
+            ctx.restore();
+        }
+        
+        // Draw obstacle
+        function drawObstacle(obstacle) {
+            // Ice block
+            ctx.fillStyle = '#5DADE2';
+            ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+            
+            // Ice shine
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fillRect(obstacle.x + 5, obstacle.y + 5, 10, obstacle.height - 10);
+        }
+        
+        // Draw ground
+        function drawGround() {
+            ctx.fillStyle = '#ECF0F1';
+            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+            
+            // Snow effect
+            ctx.fillStyle = 'white';
+            for (let i = 0; i < canvas.width; i += 30) {
+                ctx.beginPath();
+                ctx.arc(i, groundY, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        // Update penguin position
+        function updatePenguin() {
+            // Gradually increase speed based on score
+            penguin.moveSpeed = Math.min(
+                penguin.baseMoveSpeed + (score * 0.15),
+                penguin.maxMoveSpeed
+            );
+            
+            // Handle horizontal movement
+            penguin.velocityX = 0;
+            if (keys.left) {
+                penguin.velocityX = -penguin.moveSpeed;
+            }
+            if (keys.right) {
+                penguin.velocityX = penguin.moveSpeed;
+            }
+            
+            penguin.x += penguin.velocityX;
+            
+            // Keep penguin in bounds
+            if (penguin.x < 0) penguin.x = 0;
+            if (penguin.x > canvas.width - penguin.width) {
+                penguin.x = canvas.width - penguin.width;
+            }
+            
+            // Handle vertical movement (gravity and jumping)
+            penguin.velocityY += penguin.gravity;
+            penguin.y += penguin.velocityY;
+            
+            // Check ground collision
+            if (penguin.y >= groundY - penguin.height) {
+                penguin.y = groundY - penguin.height;
+                penguin.velocityY = 0;
+                penguin.isJumping = false;
+            }
+        }
+        
+        // Jump function
+        function jump() {
+            if (!penguin.isJumping && gameRunning) {
+                penguin.velocityY = penguin.jumpStrength;
+                penguin.isJumping = true;
+            }
+        }
+        
+        // Create obstacle
+        function createObstacle() {
+            const height = Math.random() * 40 + 30;
+            // Obstacles also speed up based on score
+            const obstacleSpeed = Math.min(3 + (score * 0.1), 8);
+            obstacles.push({
+                x: canvas.width,
+                y: groundY - height,
+                width: 30,
+                height: height,
+                speed: obstacleSpeed
+            });
+        }
+        
+        // Update obstacles
+        function updateObstacles() {
+            // Move obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                obstacles[i].x -= obstacles[i].speed;
+                
+                // Remove off-screen obstacles
+                if (obstacles[i].x + obstacles[i].width < 0) {
+                    obstacles.splice(i, 1);
+                    score++;
+                    scoreElement.textContent = 'Score: ' + score;
+                }
+            }
+            
+            // Create new obstacles
+            if (frameCount % 120 === 0) {
+                createObstacle();
+            }
+        }
+        
+        // Check collision
+        function checkCollision() {
+            for (let obstacle of obstacles) {
+                if (penguin.x < obstacle.x + obstacle.width &&
+                    penguin.x + penguin.width > obstacle.x &&
+                    penguin.y < obstacle.y + obstacle.height &&
+                    penguin.y + penguin.height > obstacle.y) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        // Game over
+        function endGame() {
+            gameRunning = false;
+            finalScoreElement.textContent = 'Your Score: ' + score;
+            gameOverDiv.style.display = 'block';
+        }
+        
+        // Restart game
+        function restartGame() {
+            score = 0;
+            obstacles = [];
+            frameCount = 0;
+            penguin.x = 100;
+            penguin.y = 300;
+            penguin.velocityY = 0;
+            penguin.velocityX = 0;
+            penguin.isJumping = false;
+            gameRunning = true;
+            scoreElement.textContent = 'Score: 0';
+            gameOverDiv.style.display = 'none';
+            gameLoop();
+        }
+        
+        // Main game loop
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw everything
+            drawGround();
+            drawPenguin();
+            
+            for (let obstacle of obstacles) {
+                drawObstacle(obstacle);
+            }
+            
+            // Update game state
+            updatePenguin();
+            updateObstacles();
+            
+            // Check for collision
+            if (checkCollision()) {
+                endGame();
+                return;
+            }
+            
+            frameCount++;
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Event listeners for keyboard
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+                keys.left = true;
+                e.preventDefault();
+            }
+            if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+                keys.right = true;
+                e.preventDefault();
+            }
+            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+                jump();
+                e.preventDefault();
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+                keys.left = false;
+            }
+            if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+                keys.right = false;
+            }
+        });
+        
+        canvas.addEventListener('click', jump);
+        
+        // Start the game
+        gameLoop();
+    </script>
+</body>
+</html>
